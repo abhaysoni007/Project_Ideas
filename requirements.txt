@@ -1,0 +1,3 @@
+# Only needed if you want real AI-generated ideas (ANTHROPIC_API_KEY set).
+# The script runs fine WITHOUT this using the built-in local generator.
+anthropic>=0.40.0
