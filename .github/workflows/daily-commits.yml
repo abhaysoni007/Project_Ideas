@@ -31,8 +31,10 @@ jobs:
           GIT_AUTHOR_EMAIL: yuvrajsoni411@gmail.com
           GIT_AUTHOR_NAME: abhaysoni007
           GIT_BRANCH: main
-          MIN_COMMITS: "5"
-          MAX_COMMITS: "6"
+          MIN_COMMITS: "15"
+          MAX_COMMITS: "30"
+          WEEKEND_MIN: "6"
+          WEEKEND_MAX: "12"
           # Optional free AI ideas via Groq. Add a repo secret named LLM_API_KEY.
           # If the secret is unset, the built-in local generator is used instead.
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}

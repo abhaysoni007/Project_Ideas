@@ -63,6 +63,9 @@ GIT_AUTHOR_EMAIL = cfg("GIT_AUTHOR_EMAIL")  # MUST be verified on your GitHub ac
 WORK_DIR = Path(cfg("WORK_DIR", str(SCRIPT_DIR / "repo_workspace")))
 MIN_COMMITS = int(cfg("MIN_COMMITS", "15"))
 MAX_COMMITS = int(cfg("MAX_COMMITS", "30"))
+# Weekends get fewer commits (but never zero — no skip days).
+WEEKEND_MIN = int(cfg("WEEKEND_MIN", "6"))
+WEEKEND_MAX = int(cfg("WEEKEND_MAX", "12"))
 
 # Optional free LLM for real ideas. Defaults target Groq (free, no credit card).
 # Leave LLM_API_KEY empty to use the built-in local generator instead.
@@ -515,8 +518,14 @@ def main() -> int:
     work_dir = repo / "daily-work"
     work_dir.mkdir(exist_ok=True)
 
-    n_ideas = random.randint(MIN_COMMITS, MAX_COMMITS)
-    today = datetime.now().strftime("%Y-%m-%d")
+    now = datetime.now()
+    is_weekend = now.weekday() >= 5  # 5 = Saturday, 6 = Sunday
+    if is_weekend:
+        n_ideas = random.randint(WEEKEND_MIN, WEEKEND_MAX)
+    else:
+        n_ideas = random.randint(MIN_COMMITS, MAX_COMMITS)
+    today = now.strftime("%Y-%m-%d")
+    print(f"{'Weekend' if is_weekend else 'Weekday'} run -> {n_ideas} idea commits")
 
     def commit(path: Path, message: str) -> None:
         run(["git", "add", str(path.relative_to(repo))], cwd=repo)

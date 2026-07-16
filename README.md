@@ -1,12 +1,13 @@
 # Daily AI Commit Bot
 
-Pushes a **variable 15–30 commits every day at 10 AM** to
-`github.com/abhaysoni007/Project_Ideas` (a different random count each day).
+Pushes a **variable number of commits every day at 10 AM** to
+`github.com/abhaysoni007/Project_Ideas` — a different random count daily:
+**15–30 on weekdays, 6–12 on weekends** (fewer weekends look natural; no skip days).
 Each run produces:
 
 - `ideas/YYYY-MM-DD-NN-<name>.md` — one **full-page project spec** per idea
   (tagline, problem, target users, key features, tech stack, architecture,
-  roadmap). 15–30 files, one commit each.
+  roadmap). One commit each.
 - `daily-work/YYYY-MM-DD.md` — a **daily developer work log** (standup-style:
   done / in progress / blockers / next), one commit.
 
