@@ -250,6 +250,7 @@ def generate_ideas_llm(count: int) -> list[str]:
     Uses only the standard library. Falls back to local on any failure."""
     import json
     import urllib.request
+    import urllib.error
 
     url = LLM_BASE_URL.rstrip("/") + "/chat/completions"
     prompt = (
@@ -268,6 +269,9 @@ def generate_ideas_llm(count: int) -> list[str]:
         headers={
             "Authorization": f"Bearer {LLM_API_KEY}",
             "Content-Type": "application/json",
+            "Accept": "application/json",
+            # Cloudflare (in front of Groq) 403s the default "Python-urllib" UA.
+            "User-Agent": "Mozilla/5.0 (compatible; daily-commit-bot/1.0)",
         },
     )
     try:
@@ -284,7 +288,17 @@ def generate_ideas_llm(count: int) -> list[str]:
             ideas += generate_ideas_local(count - len(ideas))
         print(f"Ideas from LLM: {LLM_MODEL} @ {LLM_BASE_URL}")
         return ideas[:count]
-    except Exception as exc:  # network / auth / quota / bad model — degrade gracefully
+    except urllib.error.HTTPError as exc:
+        # Print the API's actual error body — reveals bad key vs bad model vs quota.
+        detail = ""
+        try:
+            detail = exc.read().decode("utf-8", "replace")[:400]
+        except Exception:
+            pass
+        print(f"LLM HTTP {exc.code} {exc.reason}: {sanitize(detail)}")
+        print("Using local generator.")
+        return generate_ideas_local(count)
+    except Exception as exc:  # network / timeout / bad JSON — degrade gracefully
         print(f"LLM generation failed ({sanitize(str(exc))}); using local generator.")
         return generate_ideas_local(count)
 
