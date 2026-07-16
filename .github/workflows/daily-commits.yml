@@ -1,0 +1,41 @@
+name: Daily AI Commits
+
+# Runs on GitHub's servers — your PC can be off.
+# Cron is UTC. 04:30 UTC = 10:00 AM IST. Change if your timezone differs.
+# (GitHub may delay scheduled runs a few minutes under load.)
+on:
+  schedule:
+    - cron: "30 4 * * *"
+  workflow_dispatch: {}   # manual "Run workflow" button in the Actions tab
+
+permissions:
+  contents: write
+
+jobs:
+  commit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          # PAT so pushes are attributed to you (green squares count).
+          token: ${{ secrets.ABHAY_GITHUB_AUTOMATION }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install optional deps
+        run: pip install -r requirements.txt || true
+
+      - name: Generate ideas and commit
+        env:
+          GIT_AUTHOR_EMAIL: yuvrajsoni411@gmail.com
+          GIT_AUTHOR_NAME: abhaysoni007
+          GIT_BRANCH: main
+          MIN_COMMITS: "5"
+          MAX_COMMITS: "6"
+          # Optional: real AI ideas. Leave the secret unset to use the local generator.
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python daily_commit_bot.py
