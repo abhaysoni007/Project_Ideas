@@ -63,8 +63,13 @@ GIT_AUTHOR_EMAIL = cfg("GIT_AUTHOR_EMAIL")  # MUST be verified on your GitHub ac
 WORK_DIR = Path(cfg("WORK_DIR", str(SCRIPT_DIR / "repo_workspace")))
 MIN_COMMITS = int(cfg("MIN_COMMITS", "5"))
 MAX_COMMITS = int(cfg("MAX_COMMITS", "6"))
-ANTHROPIC_API_KEY = cfg("ANTHROPIC_API_KEY")
-ANTHROPIC_MODEL = cfg("ANTHROPIC_MODEL", "claude-sonnet-5")
+
+# Optional free LLM for real ideas. Defaults target Groq (free, no credit card).
+# Leave LLM_API_KEY empty to use the built-in local generator instead.
+# Works with any OpenAI-compatible API (Groq, OpenRouter, Together, etc.).
+LLM_API_KEY = cfg("LLM_API_KEY")
+LLM_BASE_URL = cfg("LLM_BASE_URL", "https://api.groq.com/openai/v1")
+LLM_MODEL = cfg("LLM_MODEL", "llama-3.3-70b-versatile")
 
 # Auto-set to "true" by GitHub Actions. In CI we operate on the already
 # checked-out repo instead of cloning, and push via the checkout credentials.
@@ -88,7 +93,9 @@ def authed_remote() -> str:
 import re
 
 # Redacts anything that looks like a token so it can never reach logs/tracebacks.
-_TOKEN_RE = re.compile(r"(gh[pousr]_[A-Za-z0-9]+|github_pat_[A-Za-z0-9_]+)")
+_TOKEN_RE = re.compile(
+    r"(gh[pousr]_[A-Za-z0-9]+|github_pat_[A-Za-z0-9_]+|gsk_[A-Za-z0-9]+|sk-[A-Za-z0-9-]{10,})"
+)
 
 
 def sanitize(text: str) -> str:
@@ -97,8 +104,9 @@ def sanitize(text: str) -> str:
     text = _TOKEN_RE.sub("***TOKEN***", text)
     # Redact credentials embedded in any URL: https://user:pass@host -> https://***@host
     text = re.sub(r"//[^/@\s]+@", "//***@", text)
-    if GITHUB_TOKEN:
-        text = text.replace(GITHUB_TOKEN, "***TOKEN***")
+    for secret in (GITHUB_TOKEN, LLM_API_KEY):
+        if secret:
+            text = text.replace(secret, "***TOKEN***")
     return text
 
 
@@ -152,6 +160,8 @@ DOMAINS = [
     "developer tools", "productivity", "health & fitness", "fintech", "education",
     "AI/ML", "IoT & hardware", "gaming", "sustainability", "social", "e-commerce",
     "data visualization", "security", "travel", "music & audio", "accessibility",
+    "mental wellness", "climate tech", "logistics", "real estate", "agriculture",
+    "legal tech", "HR & recruiting", "creator economy", "cybersecurity", "robotics",
 ]
 PATTERNS = [
     "A {domain} app that uses AI to {verb} {thing} for {who}.",
@@ -160,61 +170,128 @@ PATTERNS = [
     "A dashboard that turns raw {thing} into actionable {domain} insights.",
     "A mobile app that gamifies {thing} to keep {who} engaged.",
     "An API service that lets developers add {thing} to any {domain} product.",
+    "A Slack/Discord bot that helps {who} {verb} {thing} without leaving chat.",
+    "A self-hosted tool that lets {who} {verb} {thing} with full data privacy.",
+    "A no-code builder for {who} to {verb} {thing} without writing code.",
+    "A VS Code extension that helps {who} {verb} {thing} inside the editor.",
+    "A weekly-digest service that {verb}s {thing} and emails {who} a summary.",
+    "A Chrome-to-mobile sync app that lets {who} {verb} {thing} across devices.",
 ]
-VERBS = ["summarize", "predict", "organize", "recommend", "track", "optimize", "detect", "personalize"]
+VERBS = ["summarize", "predict", "organize", "recommend", "track", "optimize",
+         "detect", "personalize", "visualize", "automate", "benchmark", "translate",
+         "schedule", "audit", "cluster"]
 THINGS = ["daily habits", "expenses", "code reviews", "meeting notes", "sensor data",
-          "customer feedback", "study material", "workout plans", "news feeds", "energy usage"]
+          "customer feedback", "study material", "workout plans", "news feeds",
+          "energy usage", "job applications", "reading lists", "API logs",
+          "cloud costs", "recipes", "travel itineraries", "podcast highlights",
+          "git commits", "screen time", "invoices"]
 WHO = ["students", "small teams", "freelancers", "developers", "remote workers",
-       "startups", "creators", "parents", "researchers", "gamers"]
+       "startups", "creators", "parents", "researchers", "gamers", "designers",
+       "teachers", "founders", "job seekers", "open-source maintainers"]
+
+# Curated concrete ideas — mixed in so output isn't only templated combinations.
+SEED_IDEAS = [
+    "A tool that scans your GitHub repos and auto-generates a portfolio site from your top projects.",
+    "An app that converts long YouTube tutorials into step-by-step markdown notes.",
+    "A CLI that detects unused dependencies across a monorepo and opens cleanup PRs.",
+    "A browser extension that shows the carbon footprint of each website you visit.",
+    "A habit tracker that pairs you with an accountability buddy who has the same goal.",
+    "A service that turns your bank statements into a plain-English monthly spending story.",
+    "An AI-free rule-based linter for accessibility issues in HTML emails.",
+    "A tool that watches competitor pricing pages and alerts you when prices change.",
+    "A local-first note app where every note is a git commit you can diff over time.",
+    "A dashboard that grades your resume against a job description and lists gaps.",
+    "A Pomodoro timer that mutes Slack and sets your calendar to busy automatically.",
+    "A tool that generates realistic test data from a database schema in one command.",
+    "An app that suggests recipes based on what's about to expire in your fridge.",
+    "A extension that summarizes long GitHub issues and their comment threads.",
+    "A self-hosted read-later app that strips ads and estimates reading time.",
+    "A tool that maps your codebase into an interactive dependency graph.",
+    "A budgeting app for freelancers that sets aside tax money on every invoice paid.",
+    "A CLI that turns terminal session recordings into shareable animated SVGs.",
+    "A study app that turns your highlighted PDFs into spaced-repetition flashcards.",
+    "A tool that audits a website's Core Web Vitals and suggests concrete fixes.",
+]
 
 
 def generate_ideas_local(count: int) -> list[str]:
-    ideas = []
-    for _ in range(count):
-        pattern = random.choice(PATTERNS)
-        ideas.append(pattern.format(
+    """Return `count` unique ideas: some curated, the rest templated."""
+    ideas: list[str] = []
+    seen: set[str] = set()
+
+    # Pull a few curated ideas first for variety.
+    seeds = SEED_IDEAS[:]
+    random.shuffle(seeds)
+    for idea in seeds[: max(1, count // 2)]:
+        if idea not in seen:
+            ideas.append(idea)
+            seen.add(idea)
+
+    # Fill the rest with templated combinations, avoiding duplicates.
+    attempts = 0
+    while len(ideas) < count and attempts < count * 50:
+        attempts += 1
+        idea = random.choice(PATTERNS).format(
             domain=random.choice(DOMAINS),
             verb=random.choice(VERBS),
             thing=random.choice(THINGS),
             who=random.choice(WHO),
-        ))
-    return ideas
-
-
-def generate_ideas_ai(count: int) -> list[str]:
-    """Use Claude to generate ideas. Falls back to local on any failure."""
-    try:
-        from anthropic import Anthropic
-    except ImportError:
-        print("anthropic package not installed; using local generator.")
-        return generate_ideas_local(count)
-
-    try:
-        client = Anthropic(api_key=ANTHROPIC_API_KEY)
-        prompt = (
-            f"Give me {count} concrete, original software/product project ideas. "
-            "One per line, no numbering, no preamble. Each idea should be a single "
-            "sentence describing what it does and who it's for."
         )
-        msg = client.messages.create(
-            model=ANTHROPIC_MODEL,
-            max_tokens=1024,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        text = "".join(block.text for block in msg.content if getattr(block, "type", "") == "text")
-        ideas = [line.strip(" -•\t") for line in text.splitlines() if line.strip()]
-        ideas = [i for i in ideas if len(i) > 10]
+        if idea not in seen:
+            ideas.append(idea)
+            seen.add(idea)
+
+    random.shuffle(ideas)
+    return ideas[:count]
+
+
+def generate_ideas_llm(count: int) -> list[str]:
+    """Call an OpenAI-compatible chat API (Groq by default — free) for ideas.
+    Uses only the standard library. Falls back to local on any failure."""
+    import json
+    import urllib.request
+
+    url = LLM_BASE_URL.rstrip("/") + "/chat/completions"
+    prompt = (
+        f"Give me {count} concrete, original software or product project ideas. "
+        "One idea per line. No numbering, no bullets, no preamble, no markdown. "
+        "Each idea must be a single sentence describing what it does and who it's for."
+    )
+    payload = json.dumps({
+        "model": LLM_MODEL,
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": 800,
+        "temperature": 1.0,
+    }).encode("utf-8")
+    req = urllib.request.Request(
+        url, data=payload, method="POST",
+        headers={
+            "Authorization": f"Bearer {LLM_API_KEY}",
+            "Content-Type": "application/json",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        text = data["choices"][0]["message"]["content"]
+        ideas = []
+        for line in text.splitlines():
+            # Strip leading list markers like "1. ", "- ", "* ".
+            line = re.sub(r"^\s*(?:\d+[.)]\s*|[-*•]\s*)", "", line).strip()
+            if len(line) > 12:
+                ideas.append(line)
         if len(ideas) < count:
             ideas += generate_ideas_local(count - len(ideas))
+        print(f"Ideas from LLM: {LLM_MODEL} @ {LLM_BASE_URL}")
         return ideas[:count]
-    except Exception as exc:  # network / auth / quota — degrade gracefully
-        print(f"AI generation failed ({exc}); using local generator.")
+    except Exception as exc:  # network / auth / quota / bad model — degrade gracefully
+        print(f"LLM generation failed ({sanitize(str(exc))}); using local generator.")
         return generate_ideas_local(count)
 
 
 def generate_ideas(count: int) -> list[str]:
-    if ANTHROPIC_API_KEY:
-        return generate_ideas_ai(count)
+    if LLM_API_KEY:
+        return generate_ideas_llm(count)
     return generate_ideas_local(count)
 
 

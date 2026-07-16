@@ -2,8 +2,13 @@
 
 Pushes **5–6 commits every day at 10 AM** to `github.com/abhaysoni007/Project_Ideas`.
 Each commit adds a real project-idea file (`ideas/YYYY-MM-DD-NN.md`) — meaningful
-content, not empty commits. Ideas come from Claude if you set an API key, otherwise
-from a built-in generator (no cost).
+content, not empty commits.
+
+Ideas come from a built-in local generator by default (no key, no cost, no
+dependencies). Optionally, set a **free Groq API key** (`LLM_API_KEY`) for real
+AI-generated ideas — Groq is free with no credit card. Get one at
+https://console.groq.com/keys . Any OpenAI-compatible API works (Groq, OpenRouter,
+Together) by changing `LLM_BASE_URL` / `LLM_MODEL`.
 
 ## Contribution graph note
 
