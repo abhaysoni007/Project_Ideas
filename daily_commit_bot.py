@@ -245,24 +245,80 @@ def generate_ideas_local(count: int) -> list[str]:
     return ideas[:count]
 
 
-def generate_ideas_llm(count: int) -> list[str]:
-    """Call an OpenAI-compatible chat API (Groq by default — free) for ideas.
-    Uses only the standard library. Falls back to local on any failure."""
+# Pools used to synthesize full pages / work logs when no LLM key is set.
+NAME_PREFIX = ["Snap", "Idea", "Flow", "Nova", "Byte", "Loop", "Pulse", "Nest",
+               "Vault", "Sync", "Beacon", "Forge", "Drift", "Echo", "Lumen",
+               "Quill", "Peak", "Bolt", "Mint", "Sage", "Orbit", "Nimbus"]
+NAME_SUFFIX = ["Hub", "Kit", "Lab", "ly", "Base", "Deck", "Pilot", "Wise",
+               "Craft", "Boost", "Scope", "Mate", "Grid", "Spark", "ify",
+               "Path", "Bloom", "Works", "Stack", "Desk"]
+FEATURES_POOL = [
+    "Email/OAuth sign-in with role-based access control",
+    "Responsive dashboard with light and dark mode",
+    "Real-time updates over WebSockets",
+    "Full-text search with smart filters",
+    "One-click export to CSV and PDF",
+    "Email and push notifications",
+    "Offline-first with background sync",
+    "Public REST API with scoped API keys",
+    "Usage analytics and an admin panel",
+    "Integrations with Slack, Google, and Stripe",
+    "AI-assisted recommendations and summaries",
+    "Guided onboarding with ready-made templates",
+    "Audit log of every change",
+    "Team workspaces with granular permissions",
+]
+WORKLOG_DONE = [
+    "Scaffolded the repo and CI pipeline",
+    "Designed the database schema and wrote the first migration",
+    "Built the authentication flow end to end",
+    "Implemented the core API endpoints with validation",
+    "Wired up the dashboard layout and routing",
+    "Added unit tests for the service layer",
+    "Set up Docker Compose for local development",
+    "Integrated the third-party payment webhook",
+    "Refactored the data-access layer for clarity",
+    "Fixed a race condition in the sync worker",
+    "Added input validation and error handling",
+    "Wrote the README and API documentation",
+]
+WORKLOG_NEXT = [
+    "Add end-to-end tests for the main flow",
+    "Set up staging deployment",
+    "Implement rate limiting on the public API",
+    "Polish the empty and error states in the UI",
+    "Add pagination to the list views",
+    "Instrument metrics and structured logging",
+]
+
+
+def slugify(text: str) -> str:
+    s = re.sub(r"[^a-zA-Z0-9]+", "-", text).strip("-").lower()
+    return s[:40] or "idea"
+
+
+def _invent_name(used: set) -> str:
+    for _ in range(60):
+        name = random.choice(NAME_PREFIX) + random.choice(NAME_SUFFIX)
+        if name.lower() not in used:
+            used.add(name.lower())
+            return name
+    return random.choice(NAME_PREFIX) + str(random.randint(10, 999))
+
+
+def llm_chat(prompt: str, max_tokens: int = 1200, temperature: float = 1.0) -> str:
+    """One OpenAI-compatible chat call (Groq by default). Stdlib only.
+    Returns the assistant text, or raises RuntimeError (caller falls back)."""
     import json
     import urllib.request
     import urllib.error
 
     url = LLM_BASE_URL.rstrip("/") + "/chat/completions"
-    prompt = (
-        f"Give me {count} concrete, original software or product project ideas. "
-        "One idea per line. No numbering, no bullets, no preamble, no markdown. "
-        "Each idea must be a single sentence describing what it does and who it's for."
-    )
     payload = json.dumps({
         "model": LLM_MODEL,
         "messages": [{"role": "user", "content": prompt}],
-        "max_tokens": 800,
-        "temperature": 1.0,
+        "max_tokens": max_tokens,
+        "temperature": temperature,
     }).encode("utf-8")
     req = urllib.request.Request(
         url, data=payload, method="POST",
@@ -275,38 +331,160 @@ def generate_ideas_llm(count: int) -> list[str]:
         },
     )
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
+        with urllib.request.urlopen(req, timeout=45) as resp:
             data = json.loads(resp.read().decode("utf-8"))
-        text = data["choices"][0]["message"]["content"]
-        ideas = []
-        for line in text.splitlines():
-            # Strip leading list markers like "1. ", "- ", "* ".
-            line = re.sub(r"^\s*(?:\d+[.)]\s*|[-*•]\s*)", "", line).strip()
-            if len(line) > 12:
-                ideas.append(line)
-        if len(ideas) < count:
-            ideas += generate_ideas_local(count - len(ideas))
-        print(f"Ideas from LLM: {LLM_MODEL} @ {LLM_BASE_URL}")
-        return ideas[:count]
+        return data["choices"][0]["message"]["content"].strip()
     except urllib.error.HTTPError as exc:
-        # Print the API's actual error body — reveals bad key vs bad model vs quota.
-        detail = ""
+        body = ""
         try:
-            detail = exc.read().decode("utf-8", "replace")[:400]
+            body = exc.read().decode("utf-8", "replace")[:300]
         except Exception:
             pass
-        print(f"LLM HTTP {exc.code} {exc.reason}: {sanitize(detail)}")
-        print("Using local generator.")
-        return generate_ideas_local(count)
-    except Exception as exc:  # network / timeout / bad JSON — degrade gracefully
-        print(f"LLM generation failed ({sanitize(str(exc))}); using local generator.")
-        return generate_ideas_local(count)
+        raise RuntimeError(f"HTTP {exc.code} {exc.reason}: {body}") from None
 
 
-def generate_ideas(count: int) -> list[str]:
+# --- Concepts (name + one-liner) --------------------------------------------
+
+def local_concepts(count: int) -> list[tuple[str, str]]:
+    sentences = generate_ideas_local(count)
+    used: set = set()
+    return [(_invent_name(used), s) for s in sentences]
+
+
+def generate_concepts(count: int) -> list[tuple[str, str]]:
     if LLM_API_KEY:
-        return generate_ideas_llm(count)
-    return generate_ideas_local(count)
+        try:
+            prompt = (
+                f"Invent {count} original, distinct software or product startup ideas "
+                "across different domains. Output exactly one per line in the format:\n"
+                "Name | one-sentence description of what it does and who it's for\n"
+                "No numbering, no markdown, no extra commentary."
+            )
+            text = llm_chat(prompt, max_tokens=600, temperature=1.15)
+            concepts, seen = [], set()
+            for line in text.splitlines():
+                line = re.sub(r"^\s*(?:\d+[.)]\s*|[-*•]\s*)", "", line).strip()
+                if "|" in line:
+                    name, tag = (p.strip() for p in line.split("|", 1))
+                    name = name.strip("*_# ").strip()
+                    if name and tag and name.lower() not in seen:
+                        seen.add(name.lower())
+                        concepts.append((name, tag))
+            if concepts:
+                print(f"Concepts from LLM: {LLM_MODEL} @ {LLM_BASE_URL}")
+                if len(concepts) < count:
+                    concepts += local_concepts(count - len(concepts))
+                return concepts[:count]
+            print("LLM returned no usable concepts; using local.")
+        except Exception as exc:
+            print(f"LLM concepts failed ({sanitize(str(exc))}); using local.")
+    return local_concepts(count)
+
+
+# --- Full-page idea specs ----------------------------------------------------
+
+def local_page(name: str, tagline: str) -> str:
+    features = random.sample(FEATURES_POOL, 6)
+    front = random.choice(["React", "Next.js", "Vue 3", "SvelteKit", "React Native", "Flutter"])
+    back = random.choice(["Node.js + Express", "FastAPI (Python)", "Django", "Go (Gin)", "NestJS"])
+    db = random.choice(["PostgreSQL", "MongoDB", "SQLite", "MySQL", "Supabase"])
+    infra = random.choice(["Docker + AWS ECS", "Vercel", "Fly.io", "Railway", "GCP Cloud Run"])
+    who = random.choice(WHO)
+    feat_md = "\n".join(f"- {f}" for f in features)
+    return (
+        f"# {name}\n\n"
+        f"> {tagline}\n\n"
+        f"## Problem\n"
+        f"{who.capitalize()} struggle to {random.choice(VERBS)} their {random.choice(THINGS)} "
+        f"without switching between too many disconnected tools. Existing options are either "
+        f"too generic or too expensive for their needs.\n\n"
+        f"## Target Users\n"
+        f"- {who.capitalize()}\n- Small teams and startups\n- Anyone who needs a focused, no-friction tool\n\n"
+        f"## Key Features\n{feat_md}\n\n"
+        f"## Tech Stack\n"
+        f"- **Frontend:** {front}\n- **Backend:** {back}\n- **Database:** {db}\n"
+        f"- **Infra/DevOps:** {infra}, GitHub Actions CI/CD\n\n"
+        f"## Architecture\n"
+        f"A {front} client talks to a {back} API over REST. Data lives in {db}. "
+        f"Background jobs handle async work, and the whole stack is containerized and "
+        f"deployed via {infra}.\n\n"
+        f"## Roadmap\n"
+        f"- **v1** — Core flow, auth, and the dashboard\n"
+        f"- **v2** — Integrations, notifications, and the public API\n"
+        f"- **v3** — Team features, analytics, and mobile support\n"
+    )
+
+
+def generate_page(name: str, tagline: str) -> str:
+    if LLM_API_KEY:
+        try:
+            prompt = (
+                "Write a detailed one-page project specification in GitHub-Flavored "
+                "Markdown for a software product.\n"
+                f"Product name: {name}\n"
+                f"Concept: {tagline}\n\n"
+                "Use exactly these sections and headings, in this order:\n"
+                f"# {name}\n"
+                "> a punchy one-line tagline\n"
+                "## Problem (2-3 sentences)\n"
+                "## Target Users (bulleted)\n"
+                "## Key Features (5-7 bullets)\n"
+                "## Tech Stack (bullets grouped as Frontend, Backend, Database, "
+                "Infra/DevOps, and AI/ML if relevant)\n"
+                "## Architecture (a short paragraph)\n"
+                "## Roadmap (v1, v2, v3 bullets)\n\n"
+                "Be concrete and realistic with specific technology choices. "
+                "Output only the markdown, nothing else."
+            )
+            md = llm_chat(prompt, max_tokens=1600, temperature=0.9)
+            if len(md) > 200:
+                return md if md.lstrip().startswith("#") else f"# {name}\n\n{md}"
+            print(f"LLM page too short for {name}; using local.")
+        except Exception as exc:
+            print(f"LLM page failed ({sanitize(str(exc))}); using local.")
+    return local_page(name, tagline)
+
+
+# --- Daily work log ----------------------------------------------------------
+
+def local_work_log(concepts: list, today: str) -> str:
+    done = random.sample(WORKLOG_DONE, 5)
+    nxt = random.sample(WORKLOG_NEXT, 3)
+    projects = "\n".join(f"- **{n}** — {t}" for n, t in concepts)
+    done_md = "\n".join(f"- {d}" for d in done)
+    next_md = "\n".join(f"- {x}" for x in nxt)
+    return (
+        f"# Daily Work Log — {today}\n\n"
+        f"## Projects touched today\n{projects}\n\n"
+        f"## Done today\n{done_md}\n\n"
+        f"## In progress\n- Iterating on the core feature set based on early feedback\n"
+        f"- Cleaning up the API surface before freezing v1\n\n"
+        f"## Blockers\n- None right now\n\n"
+        f"## Next up\n{next_md}\n"
+    )
+
+
+def generate_work_log(concepts: list, today: str) -> str:
+    names = ", ".join(n for n, _ in concepts)
+    if LLM_API_KEY:
+        try:
+            prompt = (
+                f"Write a concise daily developer work log in GitHub Markdown for {today}.\n"
+                f"Frame it as realistic progress across these side projects: {names}.\n"
+                "Use this structure:\n"
+                f"# Daily Work Log — {today}\n"
+                "## Done today (4-6 concrete dev tasks as bullets)\n"
+                "## In progress (1-2 bullets)\n"
+                "## Blockers (0-1 bullet)\n"
+                "## Next up (2-3 bullets)\n"
+                "Write it like a real developer's standup notes. Output only markdown."
+            )
+            md = llm_chat(prompt, max_tokens=700, temperature=0.9)
+            if len(md) > 100:
+                return md if md.lstrip().startswith("#") else f"# Daily Work Log — {today}\n\n{md}"
+        except Exception as exc:
+            print(f"LLM work-log failed ({sanitize(str(exc))}); using local.")
+    return local_work_log(concepts, today)
 
 
 # --------------------------------------------------------------------------- #
@@ -334,50 +512,57 @@ def main() -> int:
 
     ideas_dir = repo / "ideas"
     ideas_dir.mkdir(exist_ok=True)
+    work_dir = repo / "daily-work"
+    work_dir.mkdir(exist_ok=True)
 
-    n_commits = random.randint(MIN_COMMITS, MAX_COMMITS)
+    n_ideas = random.randint(MIN_COMMITS, MAX_COMMITS)
     today = datetime.now().strftime("%Y-%m-%d")
-    stamp = datetime.now().strftime("%H:%M:%S")
-    print(f"\nGenerating {n_commits} ideas for {today}...")
-    ideas = generate_ideas(n_commits)
 
-    for i, idea in enumerate(ideas, start=1):
-        # Unique filename per commit so each is a real, distinct change.
-        fname = ideas_dir / f"{today}-{i:02d}.md"
-        suffix = 1
-        while fname.exists():
-            suffix += 1
-            fname = ideas_dir / f"{today}-{i:02d}-{suffix}.md"
-
-        content = (
-            f"# Project Idea\n\n"
-            f"- **Date:** {today} {stamp}\n"
-            f"- **#{i} of {n_commits} today**\n\n"
-            f"{idea}\n"
-        )
-        fname.write_text(content, encoding="utf-8")
-
-        run(["git", "add", str(fname.relative_to(repo))], cwd=repo)
-        commit_msg = f"Add project idea: {idea[:60]}"
+    def commit(path: Path, message: str) -> None:
+        run(["git", "add", str(path.relative_to(repo))], cwd=repo)
         env = os.environ.copy()
         if GIT_AUTHOR_EMAIL:
             env["GIT_AUTHOR_EMAIL"] = GIT_AUTHOR_EMAIL
             env["GIT_COMMITTER_EMAIL"] = GIT_AUTHOR_EMAIL
             env["GIT_AUTHOR_NAME"] = GIT_AUTHOR_NAME
             env["GIT_COMMITTER_NAME"] = GIT_AUTHOR_NAME
-        subprocess.run(
-            ["git", "commit", "-m", commit_msg],
-            cwd=repo, check=True, text=True, env=env,
-        )
-        print(f"  committed [{i}/{n_commits}] {fname.name}")
+        subprocess.run(["git", "commit", "-m", message], cwd=repo, check=True, text=True, env=env)
 
+    print(f"\nGenerating {n_ideas} full idea pages for {today}...")
+    concepts = generate_concepts(n_ideas)
+
+    for i, (name, tagline) in enumerate(concepts, start=1):
+        page = generate_page(name, tagline)
+        base = f"{today}-{i:02d}-{slugify(name)}"
+        fname = ideas_dir / f"{base}.md"
+        k = 1
+        while fname.exists():
+            k += 1
+            fname = ideas_dir / f"{base}-{k}.md"
+        fname.write_text(page.rstrip() + "\n", encoding="utf-8")
+        commit(fname, f"Add idea: {name} - {tagline[:60]}")
+        print(f"  committed idea [{i}/{n_ideas}] {fname.name}")
+
+    # Daily developer work log referencing today's projects.
+    print("Generating daily work log...")
+    wlog = generate_work_log(concepts, today)
+    wname = work_dir / f"{today}.md"
+    k = 1
+    while wname.exists():
+        k += 1
+        wname = work_dir / f"{today}-{k}.md"
+    wname.write_text(wlog.rstrip() + "\n", encoding="utf-8")
+    commit(wname, f"Daily work log for {today}")
+    print(f"  committed work log {wname.name}")
+
+    total = n_ideas + 1
     print("\nPushing to GitHub...")
     if IN_CI:
         # Push using credentials configured by actions/checkout (no token in URL).
         run(["git", "push", "origin", f"HEAD:{GIT_BRANCH}"], cwd=repo)
     else:
         run(["git", "push", authed_remote(), f"HEAD:{GIT_BRANCH}"], cwd=repo)
-    print(f"\nDone. Pushed {n_commits} commits to {GITHUB_USERNAME}/{GITHUB_REPO}.")
+    print(f"\nDone. Pushed {total} commits to {GITHUB_USERNAME}/{GITHUB_REPO}.")
     return 0
 
 

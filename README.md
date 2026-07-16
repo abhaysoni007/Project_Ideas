@@ -1,13 +1,18 @@
 # Daily AI Commit Bot
 
-Pushes **5–6 commits every day at 10 AM** to `github.com/abhaysoni007/Project_Ideas`.
-Each commit adds a real project-idea file (`ideas/YYYY-MM-DD-NN.md`) — meaningful
-content, not empty commits.
+Pushes **~6–7 commits every day at 10 AM** to `github.com/abhaysoni007/Project_Ideas`.
+Each run produces:
 
-Ideas come from a built-in local generator by default (no key, no cost, no
-dependencies). Optionally, set a **free Groq API key** (`LLM_API_KEY`) for real
-AI-generated ideas — Groq is free with no credit card. Get one at
-https://console.groq.com/keys . Any OpenAI-compatible API works (Groq, OpenRouter,
+- `ideas/YYYY-MM-DD-NN-<name>.md` — one **full-page project spec** per idea
+  (tagline, problem, target users, key features, tech stack, architecture,
+  roadmap). 5–6 files, one commit each.
+- `daily-work/YYYY-MM-DD.md` — a **daily developer work log** (standup-style:
+  done / in progress / blockers / next), one commit.
+
+Real content, not empty commits. Content comes from a built-in local generator by
+default (no key, no cost, no dependencies). Optionally, set a **free Groq API key**
+(`LLM_API_KEY`) for AI-generated content — Groq is free with no credit card. Get one
+at https://console.groq.com/keys . Any OpenAI-compatible API works (Groq, OpenRouter,
 Together) by changing `LLM_BASE_URL` / `LLM_MODEL`.
 
 ## Contribution graph note
