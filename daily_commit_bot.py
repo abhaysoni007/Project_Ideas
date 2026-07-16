@@ -61,8 +61,8 @@ GIT_BRANCH = cfg("GIT_BRANCH", "main")
 GIT_AUTHOR_NAME = cfg("GIT_AUTHOR_NAME", GITHUB_USERNAME)
 GIT_AUTHOR_EMAIL = cfg("GIT_AUTHOR_EMAIL")  # MUST be verified on your GitHub account
 WORK_DIR = Path(cfg("WORK_DIR", str(SCRIPT_DIR / "repo_workspace")))
-MIN_COMMITS = int(cfg("MIN_COMMITS", "5"))
-MAX_COMMITS = int(cfg("MAX_COMMITS", "6"))
+MIN_COMMITS = int(cfg("MIN_COMMITS", "15"))
+MAX_COMMITS = int(cfg("MAX_COMMITS", "30"))
 
 # Optional free LLM for real ideas. Defaults target Groq (free, no credit card).
 # Leave LLM_API_KEY empty to use the built-in local generator instead.
