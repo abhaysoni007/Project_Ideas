@@ -1,0 +1,33 @@
+# MindfulMingle
+
+> hosts online mindfulness and meditation sessions, led by certified instructors and tailored to specific mental health and wellness goals
+
+## Problem
+Founders struggle to benchmark their cloud costs without switching between too many disconnected tools. Existing options are either too generic or too expensive for their needs.
+
+## Target Users
+- Founders
+- Small teams and startups
+- Anyone who needs a focused, no-friction tool
+
+## Key Features
+- Integrations with Slack, Google, and Stripe
+- Email and push notifications
+- Real-time updates over WebSockets
+- Email/OAuth sign-in with role-based access control
+- Audit log of every change
+- Responsive dashboard with light and dark mode
+
+## Tech Stack
+- **Frontend:** Vue 3
+- **Backend:** NestJS
+- **Database:** SQLite
+- **Infra/DevOps:** Docker + AWS ECS, GitHub Actions CI/CD
+
+## Architecture
+A Vue 3 client talks to a NestJS API over REST. Data lives in SQLite. Background jobs handle async work, and the whole stack is containerized and deployed via Docker + AWS ECS.
+
+## Roadmap
+- **v1** — Core flow, auth, and the dashboard
+- **v2** — Integrations, notifications, and the public API
+- **v3** — Team features, analytics, and mobile support
