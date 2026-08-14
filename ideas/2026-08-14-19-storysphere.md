@@ -1,0 +1,33 @@
+# StorySphere
+
+> offers a virtual reality platform for creatives and educators to develop and share immersive, interactive stories and experiences
+
+## Problem
+Open-source maintainers struggle to audit their podcast highlights without switching between too many disconnected tools. Existing options are either too generic or too expensive for their needs.
+
+## Target Users
+- Open-source maintainers
+- Small teams and startups
+- Anyone who needs a focused, no-friction tool
+
+## Key Features
+- One-click export to CSV and PDF
+- Email and push notifications
+- Integrations with Slack, Google, and Stripe
+- Full-text search with smart filters
+- Guided onboarding with ready-made templates
+- AI-assisted recommendations and summaries
+
+## Tech Stack
+- **Frontend:** Flutter
+- **Backend:** Go (Gin)
+- **Database:** PostgreSQL
+- **Infra/DevOps:** GCP Cloud Run, GitHub Actions CI/CD
+
+## Architecture
+A Flutter client talks to a Go (Gin) API over REST. Data lives in PostgreSQL. Background jobs handle async work, and the whole stack is containerized and deployed via GCP Cloud Run.
+
+## Roadmap
+- **v1** — Core flow, auth, and the dashboard
+- **v2** — Integrations, notifications, and the public API
+- **v3** — Team features, analytics, and mobile support
