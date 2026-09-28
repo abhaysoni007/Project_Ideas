@@ -1,12 +1,13 @@
 name: Daily AI Commits
 
 # Runs on GitHub's servers — your PC can be off.
-# Cron is UTC. 04:30 UTC = 10:00 AM IST. Change if your timezone differs.
-# (GitHub may delay scheduled runs a few minutes under load.)
+# Cron is UTC. 04:30 UTC = 10:00 AM IST.
+# GitHub may delay scheduled runs a few minutes under load.
+
 on:
   schedule:
     - cron: "30 4 * * *"
-  workflow_dispatch: {}   # manual "Run workflow" button in the Actions tab
+  workflow_dispatch: {}
 
 permissions:
   contents: write
@@ -14,11 +15,12 @@ permissions:
 jobs:
   commit:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
         with:
-          # PAT so pushes are attributed to you (green squares count).
+          # PAT so pushes are attributed to you.
           token: ${{ secrets.ABHAY_GITHUB_AUTOMATION }}
 
       - name: Set up Python
@@ -31,12 +33,19 @@ jobs:
           GIT_AUTHOR_EMAIL: yuvrajsoni411@gmail.com
           GIT_AUTHOR_NAME: abhaysoni007
           GIT_BRANCH: main
-          MIN_COMMITS: "15"
-          MAX_COMMITS: "30"
-          WEEKEND_MIN: "6"
-          WEEKEND_MAX: "12"
-          # Optional free AI ideas via Groq. Add a repo secret named LLM_API_KEY.
-          # If the secret is unset, the built-in local generator is used instead.
+
+          # Reduced daily commit count
+          MIN_COMMITS: "3"
+          MAX_COMMITS: "6"
+
+          # Reduced weekend commit count
+          WEEKEND_MIN: "2"
+          WEEKEND_MAX: "4"
+
+          # Optional free AI ideas via Groq.
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
-          LLM_MODEL: llama-3.3-70b-versatile
+
+          # Current Groq free-tier model
+          LLM_MODEL: openai/gpt-oss-20b
+
         run: python daily_commit_bot.py
