@@ -17,9 +17,6 @@ jobs:
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
-        with:
-          # PAT so pushes are attributed to you (green squares count).
-          token: ${{ secrets.ABHAY_GITHUB_AUTOMATION }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
